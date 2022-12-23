@@ -11,8 +11,5 @@ import (
 // It serves as dependency injection for your app, add any dependencies you require here.
 
 type Resolver struct {
-	//SessionStore map[string]model.Session
-	//SeriesStore  map[string]model.Series
-	//ShotStore    map[string]model.Shot
 	DB *gorm.DB
 }

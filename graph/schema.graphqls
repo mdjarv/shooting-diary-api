@@ -1,11 +1,13 @@
 type Shot {
     id: ID!
     score: Int!
+    inner: Boolean!
     series: Series!
 }
 
 type Series {
     id: ID!
+    order: Int!
     session: Session!
     shots: [Shot!]!
 }
@@ -27,7 +29,7 @@ type Mutation {
     createSession(name: String!, date: String!): Session!
     addSeries(sessionId: ID!): Series!
 
-    addShot(seriesId: ID!, score: Int!): Shot!
+    addShot(seriesId: ID!, score: Int!, inner: Boolean! = false): Shot!
     removeShot(shotId: ID!): Shot!
     updateShot(shotId: ID!, score: Int!): Shot!
 }

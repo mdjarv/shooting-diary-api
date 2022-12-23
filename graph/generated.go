@@ -50,7 +50,7 @@ type DirectiveRoot struct {
 type ComplexityRoot struct {
 	Mutation struct {
 		AddSeries     func(childComplexity int, sessionID string) int
-		AddShot       func(childComplexity int, seriesID string, score int) int
+		AddShot       func(childComplexity int, seriesID string, score int, inner bool) int
 		CreateSession func(childComplexity int, name string, date string) int
 		RemoveShot    func(childComplexity int, shotID string) int
 		UpdateShot    func(childComplexity int, shotID string, score int) int
@@ -64,6 +64,7 @@ type ComplexityRoot struct {
 
 	Series struct {
 		ID      func(childComplexity int) int
+		Order   func(childComplexity int) int
 		Session func(childComplexity int) int
 		Shots   func(childComplexity int) int
 	}
@@ -77,6 +78,7 @@ type ComplexityRoot struct {
 
 	Shot struct {
 		ID     func(childComplexity int) int
+		Inner  func(childComplexity int) int
 		Score  func(childComplexity int) int
 		Series func(childComplexity int) int
 	}
@@ -85,7 +87,7 @@ type ComplexityRoot struct {
 type MutationResolver interface {
 	CreateSession(ctx context.Context, name string, date string) (*model.Session, error)
 	AddSeries(ctx context.Context, sessionID string) (*model.Series, error)
-	AddShot(ctx context.Context, seriesID string, score int) (*model.Shot, error)
+	AddShot(ctx context.Context, seriesID string, score int, inner bool) (*model.Shot, error)
 	RemoveShot(ctx context.Context, shotID string) (*model.Shot, error)
 	UpdateShot(ctx context.Context, shotID string, score int) (*model.Shot, error)
 }
@@ -141,7 +143,7 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 			return 0, false
 		}
 
-		return e.complexity.Mutation.AddShot(childComplexity, args["seriesId"].(string), args["score"].(int)), true
+		return e.complexity.Mutation.AddShot(childComplexity, args["seriesId"].(string), args["score"].(int), args["inner"].(bool)), true
 
 	case "Mutation.createSession":
 		if e.complexity.Mutation.CreateSession == nil {
@@ -217,6 +219,13 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 
 		return e.complexity.Series.ID(childComplexity), true
 
+	case "Series.order":
+		if e.complexity.Series.Order == nil {
+			break
+		}
+
+		return e.complexity.Series.Order(childComplexity), true
+
 	case "Series.session":
 		if e.complexity.Series.Session == nil {
 			break
@@ -265,6 +274,13 @@ func (e *executableSchema) Complexity(typeName, field string, childComplexity in
 		}
 
 		return e.complexity.Shot.ID(childComplexity), true
+
+	case "Shot.inner":
+		if e.complexity.Shot.Inner == nil {
+			break
+		}
+
+		return e.complexity.Shot.Inner(childComplexity), true
 
 	case "Shot.score":
 		if e.complexity.Shot.Score == nil {
@@ -402,6 +418,15 @@ func (ec *executionContext) field_Mutation_addShot_args(ctx context.Context, raw
 		}
 	}
 	args["score"] = arg1
+	var arg2 bool
+	if tmp, ok := rawArgs["inner"]; ok {
+		ctx := graphql.WithPathContext(ctx, graphql.NewPathWithField("inner"))
+		arg2, err = ec.unmarshalNBoolean2bool(ctx, tmp)
+		if err != nil {
+			return nil, err
+		}
+	}
+	args["inner"] = arg2
 	return args, nil
 }
 
@@ -657,6 +682,8 @@ func (ec *executionContext) fieldContext_Mutation_addSeries(ctx context.Context,
 			switch field.Name {
 			case "id":
 				return ec.fieldContext_Series_id(ctx, field)
+			case "order":
+				return ec.fieldContext_Series_order(ctx, field)
 			case "session":
 				return ec.fieldContext_Series_session(ctx, field)
 			case "shots":
@@ -693,7 +720,7 @@ func (ec *executionContext) _Mutation_addShot(ctx context.Context, field graphql
 	}()
 	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
 		ctx = rctx // use context from middleware stack in children
-		return ec.resolvers.Mutation().AddShot(rctx, fc.Args["seriesId"].(string), fc.Args["score"].(int))
+		return ec.resolvers.Mutation().AddShot(rctx, fc.Args["seriesId"].(string), fc.Args["score"].(int), fc.Args["inner"].(bool))
 	})
 	if err != nil {
 		ec.Error(ctx, err)
@@ -722,6 +749,8 @@ func (ec *executionContext) fieldContext_Mutation_addShot(ctx context.Context, f
 				return ec.fieldContext_Shot_id(ctx, field)
 			case "score":
 				return ec.fieldContext_Shot_score(ctx, field)
+			case "inner":
+				return ec.fieldContext_Shot_inner(ctx, field)
 			case "series":
 				return ec.fieldContext_Shot_series(ctx, field)
 			}
@@ -785,6 +814,8 @@ func (ec *executionContext) fieldContext_Mutation_removeShot(ctx context.Context
 				return ec.fieldContext_Shot_id(ctx, field)
 			case "score":
 				return ec.fieldContext_Shot_score(ctx, field)
+			case "inner":
+				return ec.fieldContext_Shot_inner(ctx, field)
 			case "series":
 				return ec.fieldContext_Shot_series(ctx, field)
 			}
@@ -848,6 +879,8 @@ func (ec *executionContext) fieldContext_Mutation_updateShot(ctx context.Context
 				return ec.fieldContext_Shot_id(ctx, field)
 			case "score":
 				return ec.fieldContext_Shot_score(ctx, field)
+			case "inner":
+				return ec.fieldContext_Shot_inner(ctx, field)
 			case "series":
 				return ec.fieldContext_Shot_series(ctx, field)
 			}
@@ -1022,6 +1055,8 @@ func (ec *executionContext) fieldContext_Query_series(ctx context.Context, field
 			switch field.Name {
 			case "id":
 				return ec.fieldContext_Series_id(ctx, field)
+			case "order":
+				return ec.fieldContext_Series_order(ctx, field)
 			case "session":
 				return ec.fieldContext_Series_session(ctx, field)
 			case "shots":
@@ -1217,6 +1252,50 @@ func (ec *executionContext) fieldContext_Series_id(ctx context.Context, field gr
 	return fc, nil
 }
 
+func (ec *executionContext) _Series_order(ctx context.Context, field graphql.CollectedField, obj *model.Series) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Series_order(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Order, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(int)
+	fc.Result = res
+	return ec.marshalNInt2int(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Series_order(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Series",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Int does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _Series_session(ctx context.Context, field graphql.CollectedField, obj *model.Series) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Series_session(ctx, field)
 	if err != nil {
@@ -1314,6 +1393,8 @@ func (ec *executionContext) fieldContext_Series_shots(ctx context.Context, field
 				return ec.fieldContext_Shot_id(ctx, field)
 			case "score":
 				return ec.fieldContext_Shot_score(ctx, field)
+			case "inner":
+				return ec.fieldContext_Shot_inner(ctx, field)
 			case "series":
 				return ec.fieldContext_Shot_series(ctx, field)
 			}
@@ -1496,6 +1577,8 @@ func (ec *executionContext) fieldContext_Session_series(ctx context.Context, fie
 			switch field.Name {
 			case "id":
 				return ec.fieldContext_Series_id(ctx, field)
+			case "order":
+				return ec.fieldContext_Series_order(ctx, field)
 			case "session":
 				return ec.fieldContext_Series_session(ctx, field)
 			case "shots":
@@ -1595,6 +1678,50 @@ func (ec *executionContext) fieldContext_Shot_score(ctx context.Context, field g
 	return fc, nil
 }
 
+func (ec *executionContext) _Shot_inner(ctx context.Context, field graphql.CollectedField, obj *model.Shot) (ret graphql.Marshaler) {
+	fc, err := ec.fieldContext_Shot_inner(ctx, field)
+	if err != nil {
+		return graphql.Null
+	}
+	ctx = graphql.WithFieldContext(ctx, fc)
+	defer func() {
+		if r := recover(); r != nil {
+			ec.Error(ctx, ec.Recover(ctx, r))
+			ret = graphql.Null
+		}
+	}()
+	resTmp, err := ec.ResolverMiddleware(ctx, func(rctx context.Context) (interface{}, error) {
+		ctx = rctx // use context from middleware stack in children
+		return obj.Inner, nil
+	})
+	if err != nil {
+		ec.Error(ctx, err)
+		return graphql.Null
+	}
+	if resTmp == nil {
+		if !graphql.HasFieldError(ctx, fc) {
+			ec.Errorf(ctx, "must not be null")
+		}
+		return graphql.Null
+	}
+	res := resTmp.(bool)
+	fc.Result = res
+	return ec.marshalNBoolean2bool(ctx, field.Selections, res)
+}
+
+func (ec *executionContext) fieldContext_Shot_inner(ctx context.Context, field graphql.CollectedField) (fc *graphql.FieldContext, err error) {
+	fc = &graphql.FieldContext{
+		Object:     "Shot",
+		Field:      field,
+		IsMethod:   false,
+		IsResolver: false,
+		Child: func(ctx context.Context, field graphql.CollectedField) (*graphql.FieldContext, error) {
+			return nil, errors.New("field of type Boolean does not have child fields")
+		},
+	}
+	return fc, nil
+}
+
 func (ec *executionContext) _Shot_series(ctx context.Context, field graphql.CollectedField, obj *model.Shot) (ret graphql.Marshaler) {
 	fc, err := ec.fieldContext_Shot_series(ctx, field)
 	if err != nil {
@@ -1636,6 +1763,8 @@ func (ec *executionContext) fieldContext_Shot_series(ctx context.Context, field 
 			switch field.Name {
 			case "id":
 				return ec.fieldContext_Series_id(ctx, field)
+			case "order":
+				return ec.fieldContext_Series_order(ctx, field)
 			case "session":
 				return ec.fieldContext_Series_session(ctx, field)
 			case "shots":
@@ -3625,6 +3754,13 @@ func (ec *executionContext) _Series(ctx context.Context, sel ast.SelectionSet, o
 			if out.Values[i] == graphql.Null {
 				atomic.AddUint32(&invalids, 1)
 			}
+		case "order":
+
+			out.Values[i] = ec._Series_order(ctx, field, obj)
+
+			if out.Values[i] == graphql.Null {
+				atomic.AddUint32(&invalids, 1)
+			}
 		case "session":
 			field := field
 
@@ -3745,6 +3881,13 @@ func (ec *executionContext) _Shot(ctx context.Context, sel ast.SelectionSet, obj
 		case "score":
 
 			out.Values[i] = ec._Shot_score(ctx, field, obj)
+
+			if out.Values[i] == graphql.Null {
+				atomic.AddUint32(&invalids, 1)
+			}
+		case "inner":
+
+			out.Values[i] = ec._Shot_inner(ctx, field, obj)
 
 			if out.Values[i] == graphql.Null {
 				atomic.AddUint32(&invalids, 1)

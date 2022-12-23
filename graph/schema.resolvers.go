@@ -6,7 +6,9 @@ package graph
 
 import (
 	"context"
+	"errors"
 	"fmt"
+	"gorm.io/gorm"
 	"shooting-api/graph/model"
 
 	"github.com/google/uuid"
@@ -21,7 +23,7 @@ func (r *mutationResolver) CreateSession(ctx context.Context, name string, date 
 		Series: nil,
 	}
 
-	err := r.DB.Create(&session).Error
+	err := r.DB.WithContext(ctx).Create(&session).Error
 	if err != nil {
 		return nil, err
 	}
@@ -32,7 +34,7 @@ func (r *mutationResolver) CreateSession(ctx context.Context, name string, date 
 // AddSeries is the resolver for the addSeries field.
 func (r *mutationResolver) AddSeries(ctx context.Context, sessionID string) (*model.Series, error) {
 	var session model.Session
-	err := r.DB.Where("id = ?", sessionID).First(&session).Error
+	err := r.DB.WithContext(ctx).Where("id = ?", sessionID).First(&session).Error
 	if err != nil {
 		return nil, fmt.Errorf("failed to find session: %w", err)
 	}
@@ -41,9 +43,18 @@ func (r *mutationResolver) AddSeries(ctx context.Context, sessionID string) (*mo
 		ID:        uuid.NewString(),
 		SessionID: sessionID,
 		Shots:     nil,
+		Order:     0,
 	}
 
-	err = r.DB.Create(&series).Error
+	// Get the highest order number
+	var maxOrder model.Series
+	err = r.DB.WithContext(ctx).Where("session_id = ?", sessionID).Order("`order` desc").Take(&maxOrder).Error
+	if err != nil && !errors.Is(err, gorm.ErrRecordNotFound) {
+		return nil, fmt.Errorf("failed to find max order: %w", err)
+	}
+	series.Order = maxOrder.Order + 1
+
+	err = r.DB.WithContext(ctx).Create(&series).Error
 	if err != nil {
 		return nil, fmt.Errorf("failed to create series: %w", err)
 	}
@@ -52,8 +63,8 @@ func (r *mutationResolver) AddSeries(ctx context.Context, sessionID string) (*mo
 }
 
 // AddShot is the resolver for the addShot field.
-func (r *mutationResolver) AddShot(ctx context.Context, seriesID string, score int) (*model.Shot, error) {
-	err := r.DB.Where("id = ?", seriesID).First(&model.Series{}).Error
+func (r *mutationResolver) AddShot(ctx context.Context, seriesID string, score int, inner bool) (*model.Shot, error) {
+	err := r.DB.WithContext(ctx).Where("id = ?", seriesID).First(&model.Series{}).Error
 	if err != nil {
 		return nil, fmt.Errorf("failed to find series: %w", err)
 	}
@@ -62,9 +73,10 @@ func (r *mutationResolver) AddShot(ctx context.Context, seriesID string, score i
 		ID:       uuid.NewString(),
 		Score:    score,
 		SeriesID: seriesID,
+		Inner:    inner,
 	}
 
-	err = r.DB.Create(&shot).Error
+	err = r.DB.WithContext(ctx).Create(&shot).Error
 	if err != nil {
 		return nil, fmt.Errorf("failed to create shot: %w", err)
 	}
@@ -75,12 +87,12 @@ func (r *mutationResolver) AddShot(ctx context.Context, seriesID string, score i
 // RemoveShot is the resolver for the removeShot field.
 func (r *mutationResolver) RemoveShot(ctx context.Context, shotID string) (*model.Shot, error) {
 	var shot model.Shot
-	err := r.DB.Where("id = ?", shotID).First(&shot).Error
+	err := r.DB.WithContext(ctx).Where("id = ?", shotID).First(&shot).Error
 	if err != nil {
 		return nil, fmt.Errorf("failed to find shot: %w", err)
 	}
 
-	err = r.DB.Where("id = ?", shotID).Delete(&model.Shot{}).Error
+	err = r.DB.WithContext(ctx).Where("id = ?", shotID).Delete(&model.Shot{}).Error
 	if err != nil {
 		return nil, fmt.Errorf("failed to delete shot: %w", err)
 	}
@@ -96,7 +108,7 @@ func (r *mutationResolver) UpdateShot(ctx context.Context, shotID string, score 
 // Sessions is the resolver for the sessions field.
 func (r *queryResolver) Sessions(ctx context.Context) ([]model.Session, error) {
 	var sessions []model.Session
-	err := r.DB.Find(&sessions).Error
+	err := r.DB.WithContext(ctx).Find(&sessions).Error
 	if err != nil {
 		return nil, fmt.Errorf("failed to find sessions: %w", err)
 	}
@@ -107,7 +119,7 @@ func (r *queryResolver) Sessions(ctx context.Context) ([]model.Session, error) {
 // Session is the resolver for the session field.
 func (r *queryResolver) Session(ctx context.Context, id string) (*model.Session, error) {
 	var session model.Session
-	err := r.DB.Where("id = ?", id).First(&session).Error
+	err := r.DB.WithContext(ctx).Where("id = ?", id).First(&session).Error
 	if err != nil {
 		return nil, fmt.Errorf("failed to find session: %w", err)
 	}
@@ -118,7 +130,7 @@ func (r *queryResolver) Session(ctx context.Context, id string) (*model.Session,
 // Series is the resolver for the series field.
 func (r *queryResolver) Series(ctx context.Context, id string) (*model.Series, error) {
 	var series model.Series
-	err := r.DB.Where("id = ?", id).First(&series).Error
+	err := r.DB.WithContext(ctx).Where("id = ?", id).First(&series).Error
 	if err != nil {
 		return nil, fmt.Errorf("failed to find series: %w", err)
 	}
@@ -129,7 +141,7 @@ func (r *queryResolver) Series(ctx context.Context, id string) (*model.Series, e
 // Session is the resolver for the session field.
 func (r *seriesResolver) Session(ctx context.Context, obj *model.Series) (*model.Session, error) {
 	var session model.Session
-	err := r.DB.Where("id = ?", obj.SessionID).First(&session).Error
+	err := r.DB.WithContext(ctx).Where("id = ?", obj.SessionID).First(&session).Error
 	if err != nil {
 		return nil, fmt.Errorf("failed to find session: %w", err)
 	}
@@ -140,14 +152,14 @@ func (r *seriesResolver) Session(ctx context.Context, obj *model.Series) (*model
 // Series is the resolver for the series field.
 func (r *sessionResolver) Series(ctx context.Context, obj *model.Session) ([]model.Series, error) {
 	var series []model.Series
-	err := r.DB.Where("session_id = ?", obj.ID).Find(&series).Error
+	err := r.DB.WithContext(ctx).Order("`order`").Where("session_id = ?", obj.ID).Find(&series).Error
 	if err != nil {
 		return nil, fmt.Errorf("failed to find series: %w", err)
 	}
 
 	for i := range series {
 		var shots []model.Shot
-		err = r.DB.Where("series_id = ?", series[i].ID).Find(&shots).Error
+		err = r.DB.WithContext(ctx).Where("series_id = ?", series[i].ID).Find(&shots).Error
 		if err != nil {
 			return nil, fmt.Errorf("failed to find shots: %w", err)
 		}
@@ -160,7 +172,7 @@ func (r *sessionResolver) Series(ctx context.Context, obj *model.Session) ([]mod
 // Series is the resolver for the series field.
 func (r *shotResolver) Series(ctx context.Context, obj *model.Shot) (*model.Series, error) {
 	var series model.Series
-	err := r.DB.Where("id = ?", obj.SeriesID).First(&series).Error
+	err := r.DB.WithContext(ctx).Where("id = ?", obj.SeriesID).First(&series).Error
 	if err != nil {
 		return nil, fmt.Errorf("failed to find series: %w", err)
 	}
